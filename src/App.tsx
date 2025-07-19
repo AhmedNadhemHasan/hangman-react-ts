@@ -7,6 +7,10 @@ import { onAuthStateChanged, signOut, type User } from "firebase/auth"
 import { auth } from "./firebase"
 import Login from "./components/Login"
 import Signup from "./components/Signup"
+import { saveScore } from "./saveScore"
+import { doc, getDoc } from "firebase/firestore"
+import { Leaderboard } from "./components/Leaderboard"
+
 
 function getWord() {
   return words[Math.floor(Math.random() * words.length)]
@@ -15,6 +19,8 @@ function getWord() {
 function App() {
   const [wordToGuess, setWordToGuess] = useState(getWord)
   const [guessedLetters, setGuessedLetters] = useState<string[]>([])
+
+  const [score, setScore] = useState(0)
 
   const [user, setUser] = useState<User | null>(null)
   const [showSignup, setShowSignup] = useState(false)
@@ -81,11 +87,34 @@ function App() {
 
 
   useEffect(() => {
-  const unsubscribe = onAuthStateChanged(auth, currentUser => {
-    setUser(currentUser)
-  })
-  return unsubscribe
+    const unsubscribe = onAuthStateChanged(auth, async currentUser => {
+      setUser(currentUser)
+      if (currentUser) {
+        try {
+          const userDoc = await getDoc(doc(db, "scores", currentUser.uid))
+          if (userDoc.exists()) {
+            setScore(userDoc.data().score || 0)
+          }
+        } catch (error) {
+          console.error("Error fetching user score:", error)
+        }
+      }
+    })
+    return unsubscribe
   }, [])
+
+
+
+  useEffect(() => {
+    if (isWinner && user) {
+      const newScore = score + 1
+      setScore(newScore)
+      saveScore(user.uid, newScore)
+        .then(() => console.log("Score saved"))
+        .catch(err => console.error("Error saving score:", err))
+    }
+  }, [isWinner, user])
+
 
   if (!user) {
     return showSignup ? (
@@ -128,6 +157,7 @@ function App() {
           {isWinner && "Winner! - Refresh to try again"}
           {isLoser && "Nice Try - Refresh to try again"}
         </div>
+        <p style={{ fontSize: "1.5rem" }}>Your Score: {score}</p>
         <HangmanDrawing numberOfGuesses={incorrectLetters.length} />
         <HangmanWord
           reveal={isLoser}
@@ -144,6 +174,8 @@ function App() {
             addGuessedLetter={addGuessedLetter}
           />
         </div>
+        <Leaderboard />
+
       </div>
     </>
   )
