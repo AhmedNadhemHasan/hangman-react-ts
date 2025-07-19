@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { HangmanDrawing } from "./HangmanDrawing"
 import { HangmanWord } from "./HangmanWord"
+import { db } from "./firebase"
 import { Keyboard } from "./Keyboard"
 import words from "./wordList.ts"
 import { onAuthStateChanged, signOut, type User } from "firebase/auth"
@@ -21,6 +22,10 @@ function App() {
   const [guessedLetters, setGuessedLetters] = useState<string[]>([])
 
   const [score, setScore] = useState(0)
+
+  const [scoreLoaded, setScoreLoaded] = useState(false)
+  const [hasScoredThisRound, setHasScoredThisRound] = useState(false)
+
 
   const [user, setUser] = useState<User | null>(null)
   const [showSignup, setShowSignup] = useState(false)
@@ -69,22 +74,22 @@ function App() {
 
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const key = e.key
-      if (key !== "Enter") return
+  const handler = (e: KeyboardEvent) => {
+    const key = e.key
+    if (key !== "Enter") return
 
-      e.preventDefault()
-      setGuessedLetters([])
-      setWordToGuess(getWord())
-    }
+    e.preventDefault()
+    setGuessedLetters([])
+    setWordToGuess(getWord())
+    setHasScoredThisRound(false) // Reset score tracking on new round
+  }
 
-    document.addEventListener("keypress", handler)
+  document.addEventListener("keypress", handler)
 
-    return () => {
-      document.removeEventListener("keypress", handler)
-    }
-  }, [])
-
+  return () => {
+    document.removeEventListener("keypress", handler)
+  }
+}, [])
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async currentUser => {
@@ -97,23 +102,27 @@ function App() {
           }
         } catch (error) {
           console.error("Error fetching user score:", error)
+        } finally {
+          setScoreLoaded(true)
         }
+      } else {
+        setScoreLoaded(false)
       }
     })
     return unsubscribe
   }, [])
 
-
-
   useEffect(() => {
-    if (isWinner && user) {
-      const newScore = score + 1
-      setScore(newScore)
-      saveScore(user.uid, newScore)
-        .then(() => console.log("Score saved"))
-        .catch(err => console.error("Error saving score:", err))
-    }
-  }, [isWinner, user])
+  if (!scoreLoaded || !user || !isWinner || hasScoredThisRound) return
+
+  const newScore = score + 1
+  setScore(newScore)
+  saveScore(user.uid, newScore)
+    .then(() => console.log("Score saved:", newScore))
+    .catch(err => console.error("Error saving score:", err))
+
+  setHasScoredThisRound(true) // prevent duplicate saves
+}, [isWinner, user, scoreLoaded, hasScoredThisRound])
 
 
   if (!user) {
